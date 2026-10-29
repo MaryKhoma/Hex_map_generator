@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Гексагональная карта</title>
+  <link rel="stylesheet" href="vendor/maplibre-gl.css"><link rel="stylesheet" href="src/style.css">
+  <script defer src="vendor/maplibre-gl.js"></script>
+  <script defer src="vendor/pmtiles.js"></script>
+  <script defer src="vendor/basemaps.js"></script>
+  <script type="module" src="src/app.js"></script>
+</head>
+<body>
+  <aside id="sidebar">
+    <header><div class="eyebrow"><span class="hexmark">⬡</span> HEX MAP <span class="local">ЛОКАЛЬНО</span></div>
+      <div id="map-tools"><span class="map-tag">H3 <b id="resolution"></b></span><button id="fit">Показать все гексы ↗</button></div>
+      <p id="status" role="status">Загрузка карты…</p>
+      <div id="error" role="alert" hidden><button id="close-error" aria-label="Закрыть сообщение">×</button><span id="error-text"></span></div>
+    </header>
+    <section><div class="section-heading">01 / ДАННЫЕ</div>
+      <label for="city">Город / подложка</label><select id="city"></select>
+      <label for="csv-file">CSV с данными</label><input id="csv-file" type="file" accept=".csv,text/csv">
+      <p class="hint">Файл читается в браузере и не загружается на сервер. До 50 000 строк.</p>
+      <div class="form-row"><div><label for="csv-encoding">Кодировка CSV</label><select id="csv-encoding"><option value="utf-8">UTF-8</option><option value="windows-1251">Windows-1251</option></select></div><div><label for="csv-decimal">Десятичный знак</label><select id="csv-decimal"><option value=".">Точка</option><option value=",">Запятая</option></select></div></div>
+      <div id="columns-panel" hidden>
+        <label for="hex-column">Колонка H3</label><select id="hex-column"></select>
+        <label for="value-column">Колонка значений</label><select id="value-column"></select>
+        <label for="group-column">Колонка фильтра</label><select id="group-column"></select>
+        <label for="hover-columns">Дополнительные поля в подсказках</label><select id="hover-columns" multiple size="3"></select>
+        <details><summary>Первые строки CSV</summary><div id="csv-preview"></div></details>
+        <button id="build-data" class="primary">Показать данные на карте</button>
+      </div>
+      <label for="group">Показатель / группа</label><select id="group"></select>
+      <div class="stats"><div><strong id="count">—</strong><span>гексов</span></div><div><strong id="range">—</strong><span>диапазон значений</span></div></div>
+      <p class="hint" id="meta"></p>
+    </section>
+    <section><div class="section-heading">02 / ЦВЕТ И ШКАЛА</div>
+      <div class="segmented"><button id="continuous" class="active">Непрерывная</button><button id="discrete">Дискретная</button></div>
+      <label for="scope">Диапазон шкалы</label><select id="scope"><option value="group">Для выбранного показателя</option><option value="global">Общий для всех показателей</option></select>
+      <div id="bin-row"><label for="bins">Интервалов на каждой стороне нуля</label><input id="bins" type="number" min="2" max="9" value="5"></div>
+      <div id="custom-bins-row">
+        <label for="bin-edges">Свои границы интервалов</label><input id="bin-edges" type="text" placeholder="Например: -100; -20; 0; 15; 100">
+        <button id="apply-bin-edges" style="margin-top:7px">Применить границы</button>
+        <p class="hint">Укажите все границы по возрастанию через «;», включая нижнюю и верхнюю. Десятичная запятая допустима. Для значений обоих знаков добавьте 0. Пустое поле возвращает равные интервалы.</p>
+        <p id="bin-edges-message" class="hint" role="status" hidden></p>
+      </div>
+      <label class="check"><input id="symmetric" type="checkbox" checked>Симметричная шкала относительно 0</label>
+      <label for="palette">Палитра</label><select id="palette">
+        <option value="magma">Magma</option>
+        <option value="viridis">Viridis</option>
+        <option value="change">Красно-зелёная · −15…15</option>
+        <option value="level">Последовательная · 3…10</option>
+        <option value="classic">Синяя — светлая — красная</option>
+        <option value="purple">Фиолетовая — светлая — оранжевая</option>
+        <option value="green">Синяя — светлая — зелёная</option>
+        <option value="custom">Своя палитра</option>
+      </select>
+      <p id="palette-note" class="hint" hidden></p>
+      <label class="check"><input id="reverse-palette" type="checkbox">Перевернуть палитру</label>
+      <label id="negative-label">Отрицательные: от минимума к нулю</label><div id="negative-palette" class="palette-colors"></div>
+      <div class="colors"><label><input type="color" id="zero_color" aria-label="Цвет нуля"><span id="zero-label">Точка 0</span></label></div>
+      <label id="positive-label">Положительные: от нуля к максимуму</label><div id="positive-palette" class="palette-colors"></div>
+      <p class="hint">Цвета распределены по диапазону данных. Ноль выделяется, только если он есть в данных или между минимумом и максимумом. Цвета можно менять вручную.</p>
+      <label for="opacity" class="spread">Непрозрачность <output id="opacity-label"></output></label><input id="opacity" type="range" min="0" max="1" step="0.01">
+      <label class="check"><input id="outline" type="checkbox" checked>Границы гексов</label>
+    </section>
+    <section><div class="section-heading">03 / ПОДЛОЖКА</div><div id="layers" class="layer-grid"></div>
+      <label for="label-size">Размер подписей, %</label><input id="label-size" type="number" min="50" max="300" step="1">
+      <p class="hint">100% — исходный размер. Сохраняются различия между городами, районами и улицами, а также изменение размера при приближении.</p>
+      <div class="colors"><label><input id="label_text_color" type="color"><span>Цвет текста</span></label><label><input id="label_halo_color" type="color"><span>Цвет обводки</span></label></div>
+      <label class="check"><input id="label-no-halo" type="checkbox">Без обводки подписей</label>
+      <p class="hint">OpenStreetMap · Protomaps · подписи на русском</p>
+    </section>
+    <section><div class="section-heading">04 / ОФОРМЛЕНИЕ И ЭКСПОРТ</div>
+      <label for="export-title">Заголовок карты</label><textarea id="export-title" rows="2" maxlength="1000" placeholder="Без заголовка"></textarea>
+      <label for="export-subtitle">Подзаголовок карты</label><textarea id="export-subtitle" rows="2" maxlength="1000" placeholder="Необязательно"></textarea>
+      <label for="legend-title">Название легенды</label><textarea id="legend-title" rows="2" maxlength="1000"></textarea>
+      <p class="hint">Для переноса строки нажмите Enter или вставьте &lt;br&gt;. Переносы сохраняются в PNG, SVG и HTML; длинные строки также переносятся автоматически.</p>
+      <div class="form-row"><div><label for="unit">Единица</label><input id="unit" type="text" placeholder="%, ₽, чел."></div><div><label for="decimals">Знаков после запятой — везде</label><input id="decimals" type="number" min="0" max="8"></div></div>
+      <p class="hint">Округление значений в легенде, диапазоне и подсказках, включая HTML, PNG и SVG. Границы интервалов и исходные значения не изменяются.</p>
+      <div class="form-row"><div><label for="legend_title_size">Заголовок легенды, px</label><input id="legend_title_size" type="number" min="8" max="36" step="1"></div><div><label for="legend_text_size">Значения легенды, px</label><input id="legend_text_size" type="number" min="8" max="36" step="1"></div></div>
+      <label class="check"><input id="show-legend" type="checkbox" checked>Легенда</label><label class="check"><input id="hover" type="checkbox" checked>Подсказки при наведении</label>
+      <div class="form-row"><div><label for="export_width">Ширина файла, px</label><input id="export_width" type="number" min="1200" max="8192" step="1"></div><div><label for="export_height">Высота файла, px</label><input id="export_height" type="number" min="1000" max="8192" step="1"></div></div>
+      <div class="export-buttons"><button id="png" class="primary" disabled>Скачать PNG</button><button id="svg" disabled>Скачать SVG</button></div>
+      <p class="hint">Ширина и высота задают размер сохраняемого изображения. При увеличении обоих размеров в одинаковое число раз растёт разрешение, а оформление сохраняет пропорции. Внутри рамки показан макет результата. В SVG гексы и легенда векторные, подложка растровая.</p>
+      <p id="layout-message" class="hint" role="status" hidden></p>
+      <label for="share-filename">Имя HTML-файла</label><input id="share-filename" type="text" value="map_share.html">
+      <label class="check"><input id="html-all-groups" type="checkbox" checked>Все группы в HTML</label>
+      <button id="share-html" class="primary" disabled style="width:100%;margin-top:10px">Скачать HTML</button>
+      <p class="hint">Автономный HTML сохраняет гексы и подсказки в рамке экспорта. Подложка — снимок: при увеличении новые детали не появляются.</p>
+      <label for="load-settings">Открыть настройки JSON</label><input id="load-settings" type="file" accept=".json,application/json">
+      <button id="save-settings" class="text-button">Скачать настройки JSON</button>
+    </section>
+    <footer>Данные обрабатываются на вашем компьютере.<br>© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> · Protomaps · ESA WorldCover</footer>
+  </aside>
+  <main id="map-area"><div id="map"></div><div id="export-frame"><div id="map-overlay" role="img" aria-label="Заголовок и легенда карты"></div></div>
+  </main>
+</body></html>
